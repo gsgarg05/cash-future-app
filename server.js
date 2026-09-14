@@ -61,34 +61,40 @@ async function loadPairs() {
   console.log(`Loaded ${pairs.length} pairs`);
 }
 
-async function loadFilteredLines(filePath, validTokens) {
+async function loadFilteredData(filePath, validTokens) {
   console.log(`Loading ${filePath}...`);
-  const lines = [];
+  const tokens = [];
+  const bids = [];
+  const asks = [];
+  const ltps = [];
 
   const rl = readline.createInterface({
     input: fs.createReadStream(filePath)
   });
 
   for await (const line of rl) {
-    const token = parseInt(line.split(',')[0]);
-    if (validTokens.has(token)) {
-      lines.push(line);
-    }
+    const cols = line.split(',');
+    const token = parseInt(cols[0]);
+    if (!validTokens.has(token)) continue;
+    tokens.push(token);
+    bids.push(parseFloat(cols[2]));
+    asks.push(parseFloat(cols[3]));
+    ltps.push(parseFloat(cols[4]));
   }
 
-  console.log(`Kept ${lines.length} relevant lines from ${filePath}`);
-  return lines;
+  console.log(`Kept ${tokens.length} relevant rows from ${filePath}`);
+  return {
+    tokens: Int32Array.from(tokens),
+    bids: Float64Array.from(bids),
+    asks: Float64Array.from(asks),
+    ltps: Float64Array.from(ltps),
+    length: tokens.length,
+  };
 }
 
-function parseLine(line) {
-  const cols = line.split(',');
-  return {
-    token: parseInt(cols[0]),
-    timestamp: parseInt(cols[1]) + 315513000,
-    bid: parseFloat(cols[2]),
-    ask: parseFloat(cols[3]),
-    ltp: parseFloat(cols[4]),
-  };
+function applyRow(data, i) {
+  const token = data.tokens[i];
+  marketData[token] = { bid: data.bids[i], ask: data.asks[i], ltp: data.ltps[i] };
 }
 
 function buildBroadcastData() {
@@ -124,8 +130,8 @@ async function main() {
   await ensureMarketFile(cmPath, process.env.CM_DATA_URL);
   await ensureMarketFile(foPath, process.env.FO_DATA_URL);
 
-  const cmLines = await loadFilteredLines(cmPath, cmTokens);
-  const foLines = await loadFilteredLines(foPath, foTokens);
+  const cmData = await loadFilteredData(cmPath, cmTokens);
+  const foData = await loadFilteredData(foPath, foTokens);
 
   let cmIndex = 0;
   let foIndex = 0;
@@ -140,26 +146,14 @@ async function main() {
   const BATCH_SIZE = 1000;
 
   setInterval(() => {
-    for (let i = 0; i < BATCH_SIZE; i++) {
-      if (cmLines.length > 0) {
-        const cmLine = cmLines[cmIndex];
-        if (cmLine) {
-          const data = parseLine(cmLine);
-          marketData[data.token] = { bid: data.bid, ask: data.ask, ltp: data.ltp };
-        }
-        cmIndex = (cmIndex + 1) % cmLines.length;
-      }
+    for (let i = 0; i < BATCH_SIZE && cmData.length > 0; i++) {
+      applyRow(cmData, cmIndex);
+      cmIndex = (cmIndex + 1) % cmData.length;
     }
 
-    for (let i = 0; i < BATCH_SIZE; i++) {
-      if (foLines.length > 0) {
-        const foLine = foLines[foIndex];
-        if (foLine) {
-          const data = parseLine(foLine);
-          marketData[data.token] = { bid: data.bid, ask: data.ask, ltp: data.ltp };
-        }
-        foIndex = (foIndex + 1) % foLines.length;
-      }
+    for (let i = 0; i < BATCH_SIZE && foData.length > 0; i++) {
+      applyRow(foData, foIndex);
+      foIndex = (foIndex + 1) % foData.length;
     }
 
     const payload = JSON.stringify(buildBroadcastData());
