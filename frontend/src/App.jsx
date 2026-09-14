@@ -37,7 +37,11 @@ export default function App() {
   const wsRef = useRef(null);
 
   useEffect(() => {
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8080';
+    const wsUrl =
+      import.meta.env.VITE_WS_URL ||
+      (window.location.protocol === 'https:'
+        ? `wss://${window.location.host}`
+        : 'ws://localhost:8080');
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

@@ -1,8 +1,49 @@
 const fs = require('fs');
+const http = require('http');
 const https = require('https');
+const path = require('path');
 const readline = require('readline');
 const WebSocket = require('ws');
 const pool = require('./db');
+
+const FRONTEND_DIR = path.join(__dirname, 'frontend', 'dist');
+const MIME = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.json': 'application/json',
+};
+
+function serveStatic(req, res) {
+  let urlPath = decodeURIComponent(req.url.split('?')[0]);
+  if (urlPath === '/') urlPath = '/index.html';
+
+  const filePath = path.join(FRONTEND_DIR, urlPath);
+  if (!filePath.startsWith(FRONTEND_DIR)) {
+    res.writeHead(403);
+    return res.end('Forbidden');
+  }
+
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      // SPA fallback — serve index.html for unknown routes
+      fs.readFile(path.join(FRONTEND_DIR, 'index.html'), (e2, html) => {
+        if (e2) {
+          res.writeHead(404);
+          return res.end('Not found');
+        }
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(html);
+      });
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath)] || 'application/octet-stream' });
+    res.end(data);
+  });
+}
 
 const marketData = {};
 let pairs = [];
@@ -136,8 +177,10 @@ async function main() {
   let cmIndex = 0;
   let foIndex = 0;
 
-  const wss = new WebSocket.Server({ port: process.env.PORT || 8080 });
-  console.log(`WebSocket server running on port ${process.env.PORT || 8080}`);
+  const port = process.env.PORT || 8080;
+  const server = http.createServer(serveStatic);
+  const wss = new WebSocket.Server({ server });
+  server.listen(port, () => console.log(`Server running on port ${port}`));
 
   wss.on('connection', ws => {
     ws.send(JSON.stringify(buildBroadcastData()));
