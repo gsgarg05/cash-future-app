@@ -1,10 +1,46 @@
 const fs = require('fs');
+const https = require('https');
 const readline = require('readline');
 const WebSocket = require('ws');
 const pool = require('./db');
 
 const marketData = {};
 let pairs = [];
+
+function downloadFile(url, dest) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(dest);
+    https.get(url, response => {
+      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+        file.close();
+        fs.unlinkSync(dest);
+        return downloadFile(response.headers.location, dest).then(resolve, reject);
+      }
+      if (response.statusCode !== 200) {
+        file.close();
+        fs.unlinkSync(dest);
+        return reject(new Error(`Download failed ${response.statusCode} for ${url}`));
+      }
+      response.pipe(file);
+      file.on('finish', () => file.close(resolve));
+    }).on('error', err => {
+      file.close();
+      if (fs.existsSync(dest)) fs.unlinkSync(dest);
+      reject(err);
+    });
+  });
+}
+
+async function ensureMarketFile(filePath, url) {
+  if (fs.existsSync(filePath)) {
+    console.log(`Found ${filePath}`);
+    return;
+  }
+  if (!url) throw new Error(`Missing ${filePath} and no download URL provided`);
+  console.log(`Downloading ${filePath} from ${url}...`);
+  await downloadFile(url, filePath);
+  console.log(`Downloaded ${filePath}`);
+}
 
 async function loadPairs() {
   const result = await pool.query(`
@@ -82,8 +118,14 @@ async function main() {
   const foTokens = new Set(pairs.map(p => p.fo_token));
 
   const dataDir = process.env.DATA_DIR || './task';
-  const cmLines = await loadFilteredLines(`${dataDir}/nsecm_market_data.csv`, cmTokens);
-  const foLines = await loadFilteredLines(`${dataDir}/nsefo_market_data.csv`, foTokens);
+  const cmPath = `${dataDir}/nsecm_market_data.csv`;
+  const foPath = `${dataDir}/nsefo_market_data.csv`;
+
+  await ensureMarketFile(cmPath, process.env.CM_DATA_URL);
+  await ensureMarketFile(foPath, process.env.FO_DATA_URL);
+
+  const cmLines = await loadFilteredLines(cmPath, cmTokens);
+  const foLines = await loadFilteredLines(foPath, foTokens);
 
   let cmIndex = 0;
   let foIndex = 0;
