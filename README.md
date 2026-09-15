@@ -38,26 +38,79 @@ live over WebSocket and update once per second.
 
 ## Running locally
 
+Please follow the steps below to run locally:
+
+### Prerequisites
+
+Install these first:
+- Node.js v18+
+- PostgreSQL
+- Git
+
+### 1. Clone the repo
+
 ```bash
-# 1. install deps
+git clone https://github.com/gsgarg05/cash-future-app.git
+cd cash-future-app
+```
+
+### 2. Create the database and user
+
+```bash
+psql postgres -c "CREATE USER cashfuture WITH PASSWORD 'cashfuture123';"
+psql postgres -c "CREATE DATABASE cash_future OWNER cashfuture;"
+```
+
+### 3. Create a `.env` file in the project root folder
+
+Paste this in the `.env` file:
+
+```
+DB_HOST=localhost
+DB_NAME=cash_future
+DB_USER=cashfuture
+DB_PASSWORD=cashfuture123
+DB_PORT=5432
+CM_DATA_URL=https://github.com/gsgarg05/cash-future-app/releases/download/market-data/nsecm_market_data.csv
+FO_DATA_URL=https://github.com/gsgarg05/cash-future-app/releases/download/market-data/nsefo_market_data.csv
+PORT=8080
+```
+
+### 4. Install dependencies and build the frontend
+
+Run the commands:
+
+```bash
 npm install
-cd frontend && npm install && cd ..
+cd frontend && npm install && npm run build && cd ..
+```
 
-# 2. configure the database (see .env.example)
-cp .env.example .env      # then fill in your Postgres credentials
+### 5. Seed the database (loads contract data into the postgres db)
 
-# 3. seed contract data
+Run the command:
+
+```bash
 node seed.js
+```
 
-# 4. build the frontend
-cd frontend && npm run build && cd ..
+### 6. Start the app
 
-# 5. start the server (serves frontend + WebSocket on port 8080)
+Run the command:
+
+```bash
 node server.js
 ```
 
-For live-reload frontend development, run `npm run dev` inside `frontend/`
-(it connects to `ws://localhost:8080`).
+(This command may take around a minute or so to run as it has to fetch the
+high size CSV files from GitHub.) Wait until you see `Server running on port 8080`.
+
+### 7. Open in your browser
+
+The webpage will be live on:
+
+```
+http://localhost:8080
+```
 
 ## Market data files
 
